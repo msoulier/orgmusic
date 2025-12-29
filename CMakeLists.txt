@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 #set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 
-configure_file(config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h @ONLY)
+configure_file(config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/config.h @ONLY)
 
 file(GLOB SRC_FILES "*.cpp")
 
