@@ -17,3 +17,5 @@ file(GLOB SRC_FILES "*.cpp")
 add_executable(orgmusic
     orgmusic.cpp)
 target_link_libraries(orgmusic mediainfo)
+target_include_directories(orgmusic PUBLIC $HOME/include)
+target_link_directories(orgmusic PUBLIC $HOME/lib)

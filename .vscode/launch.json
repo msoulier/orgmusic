@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "C/C++: gcc build and debug active file",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/orgmusic",
+            "args": ["--genre", "/home/msoulier/Music"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "preLaunchTask": "CMake: build",
+            "environment": [
+                {"name": "LD_LIBRARY_PATH",
+                "value": "${env:HOME}/lib"
+            ]
+        }
+    ],
+    "version": "2.0.0"
+}
