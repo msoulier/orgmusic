@@ -5,7 +5,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/orgmusic",
-            "args": ["--genre", "/home/msoulier/Music"],
+            "args": ["--genre", "/home/msoulier/Music", "/home/msoulier/music"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build",
             "preLaunchTask": "CMake: build",
