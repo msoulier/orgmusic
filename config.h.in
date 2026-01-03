@@ -1,0 +1,4 @@
+// Version provided by cmake.
+#define ORGMUSIC_VERSION_MAJOR @OrgMusic_VERSION_MAJOR@
+#define ORGMUSIC_VERSION_MINOR @OrgMusic_VERSION_MINOR@
+#define ORGMUSIC_VERSION_PATCH @OrgMusic_VERSION_PATCH@

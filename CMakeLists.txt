@@ -8,14 +8,15 @@ project(OrgMusic
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-#set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 
 configure_file(config.h.in ${CMAKE_CURRENT_SOURCE_DIR}/config.h @ONLY)
 
-file(GLOB SRC_FILES "*.cpp")
-
 add_executable(orgmusic
     orgmusic.cpp)
-target_link_libraries(orgmusic mediainfo)
+target_link_libraries(orgmusic PUBLIC mediainfo)
+target_link_libraries(orgmusic PUBLIC mikecpp)
 target_include_directories(orgmusic PUBLIC $HOME/include)
+target_include_directories(orgmusic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/mikelibcpp)
 target_link_directories(orgmusic PUBLIC $HOME/lib)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mikelibcpp)

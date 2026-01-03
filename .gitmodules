@@ -1,0 +1,6 @@
+[submodule "mikelibc"]
+	path = mikelibc
+	url = git@github.com:msoulier/mikelibc.git
+[submodule "mikelibcpp"]
+	path = mikelibcpp
+	url = git@github.com:msoulier/mikelibcpp.git

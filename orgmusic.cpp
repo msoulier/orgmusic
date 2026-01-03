@@ -13,85 +13,83 @@
 #include <MediaInfo/MediaInfo.h>
 
 #include "config.h"
+#include "mstring.hpp"
+#include "mlogger.hpp"
 
 namespace fs = std::filesystem;
 
+static std::string version_major = "ORGMUSIC_VERSION_MAJOR";
+static std::string version_minor = "ORGMUSIC_VERSION_MINOR";
+static std::string version_patch = "ORGMUSIC_VERSION_PATCH";
 static bool genre = false;
 static bool report = false;
 static bool dryrun = false;
+static bool dump = false;
+static bool verbose = false;
 static std::vector<std::string> input_files;
-static std::string outdir;
+static fs::path outdir;
 static std::map<std::string, int> genremap;
+static MLogger mlog;
 
-bool is_shell_metachar(unsigned char c) {
-    // Common shell metacharacters
-    const std::string metacharacters = "|&;()<>{}[]$`'\"\\*?~!#^ \t\n";
-    return metacharacters.find(c) != std::string::npos;
-}
-
-std::string
-sane_elem(std::string& insane)
-{
-    std::string sane = insane;
-    // Convert to lower case.
-    std::transform(sane.begin(), sane.end(), sane.begin(),
-        [](unsigned char c){ return ::tolower(c); });
-    // Convert any consecutive spaces to an underscore.
-    std::transform(sane.begin(), sane.end(), sane.begin(),
-        [](unsigned char c){ return c == ' ' ? '_' : c; });
-    // Screen out any unwanted characters.
-    sane.erase(
-        std::remove_if(sane.begin(), sane.end(),
-            [](unsigned char c){ return c > 127; }),
-        sane.end());
-    sane.erase(
-        std::remove_if(sane.begin(), sane.end(), is_shell_metachar),
-        sane.end()
-    );
-
-    return sane;
-}
-
-fs::path outpath(std::string outdir,
+fs::path outpath(fs::path outdir,
                  std::string sgenre,
                  std::string sartist,
+                 std::string salbum,
                  std::string stitle,
+                 std::string trackno,
                  fs::path inpath)
 {
-    std::string full_path = outdir;
+    std::string full_path = outdir.string();
     if (genre) {
         full_path += "/" + sane_elem(sgenre);
     }
-    full_path += "/" + sane_elem(sartist) + "/" + sane_elem(stitle);
+    full_path += "/" + sane_elem(sartist) + "/" + sane_elem(salbum) + "/";
+    if (trackno != "") {
+         full_path += trackno + "_";
+    }
+    full_path += sane_elem(stitle);
     fs::path path(full_path);
     path.replace_extension(inpath.extension());
     return path;
 }
 
+// Return 1 for success, 0 for failure, -1 for fatal error
 int
 process_file(fs::path path)
 {
+    // We currently only process .mp3 or .m4a files.
+    if ((path.extension() != ".mp3") && (path.extension() != ".m4a")) {
+        if (verbose) {
+            mlog.error() << "process_file: unsupported file type: " << path.extension() << std::endl;
+            mlog.error() << path << std::endl;
+        }
+        return 0;
+    }
     std::string spath = path.string();
     int rv = 0;
     // MediaInfo expects unicode wchar_t*
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     std::wstring myinput = converter.from_bytes(spath);
 
+    mlog.debug() << "Input file: " << path << std::endl;
+
     MediaInfoLib::MediaInfo info;
     if (info.Open(myinput) == 0) {
-        std::cerr << "ERROR: file not opened: " << spath << std::endl;
+        mlog.error() << "file not opened: " << spath << std::endl;
     } else {
-        MediaInfoLib::String wdetails = info.Inform();
-        std::string details = converter.to_bytes(wdetails);
-        std::cout << details << std::endl;
+        if (dump) {
+            MediaInfoLib::String wdetails = info.Inform();
+            std::string details = converter.to_bytes(wdetails);
+            std::cout << details << std::endl;
+        }
         std::wstring wgenre = info.Get(MediaInfoLib::Stream_General, 0, L"Genre");
         // convert back
         std::string genre_str = converter.to_bytes(wgenre);
         if (genre_str.empty()) {
-            std::cerr << "Unknown Genre: " << spath << std::endl;
+            mlog.warning() << "Unknown Genre: " << spath << std::endl;
         } else {
             if (genre) {
-                    //std::cout << genre_str << std::endl;
+                    mlog.debug() << genre_str << std::endl;
                     if (genremap.find(genre_str) == genremap.end()) {
                         genremap[genre_str] = 0;
                     }
@@ -101,19 +99,43 @@ process_file(fs::path path)
         // Album, Album/Artist, Title
         std::wstring walbum = info.Get(MediaInfoLib::Stream_General, 0, L"Album");
         std::string album_str = converter.to_bytes(walbum);
-        std::cout << "Album: " << sane_elem(album_str) << std::endl;
+        album_str = album_str.empty() ? "Unknown" : album_str;
+        mlog.debug() << "Album: " << sane_elem(album_str) << std::endl;
 
         std::wstring wartist = info.Get(MediaInfoLib::Stream_General, 0, L"Performer");
         std::string artist_str = converter.to_bytes(wartist);
-        std::cout << "Artist: " << sane_elem(artist_str) << std::endl;
+        artist_str = artist_str.empty() ? "Unknown" : artist_str;
+        mlog.debug() << "Artist: " << sane_elem(artist_str) << std::endl;
 
         std::wstring wtitle = info.Get(MediaInfoLib::Stream_General, 0, L"Title");
         std::string title_str = converter.to_bytes(wtitle);
-        std::cout << "Title: " << sane_elem(title_str) << std::endl;
+        title_str = title_str.empty() ? "Unknown" : title_str;
+        mlog.debug() << "Title: " << sane_elem(title_str) << std::endl;
+
+        std::wstring wtrackno = info.Get(MediaInfoLib::Stream_General, 0, L"Track name/Position");
+        std::string trackno = converter.to_bytes(wtrackno);
+        trackno = trackno.empty() ? "" : trackno;
+        mlog.debug() << "Track number: " << trackno << std::endl;
 
         if (!outdir.empty()) {
-            std::cout << "Path: " << outpath(outdir, genre_str, artist_str, title_str, path) << std::endl;
+            fs::path output_file = outpath(outdir, genre_str, artist_str, album_str, title_str, trackno, path);
+            mlog.debug() << "Output file: " << output_file << std::endl;
+            if (!dryrun) {
+                std::cout << "Here I would mkdir: " << output_file << std::endl;
+                std::cout << "parent_path: " << output_file.parent_path() << std::endl;
+                fs::path parent_path = output_file.parent_path();
+                try {
+                    if (!fs::exists(parent_path)) {
+                        fs::create_directories(parent_path);
+                    }
+                } catch (fs::filesystem_error err) {
+                    mlog.error() << "failed to create directory: " << parent_path << " " << err.what() << std::endl;
+                    return -1;
+                }
+            }
         }
+
+        mlog.debug() << "" << std::endl;
 
         info.Close();
         rv = 1;
@@ -124,6 +146,7 @@ process_file(fs::path path)
 int
 parse_arguments(int argc, char *argv[])
 {
+    // FIXME: use a real options parser
     int options = 0;
     for (int i = 1; i < argc; ++i)
     {
@@ -136,6 +159,12 @@ parse_arguments(int argc, char *argv[])
             options++;
         } else if ((arg == "--dry-run") || (arg == "-D")) {
             dryrun = true;
+            options++;
+        } else if ((arg == "--dump") || (arg == "-d")) {
+            dump = true;
+            options++;
+        } else if ((arg == "--verbose") || (arg == "-v")) {
+            verbose = true;
             options++;
         } else {
             if (i == argc-1) {
@@ -150,21 +179,29 @@ parse_arguments(int argc, char *argv[])
             }
         }
     }
+    if ((report) && (!genre)) {
+        std::cerr << "--report requires a report type: --genre currently" << std::endl;
+        return -1;
+    }
     if (input_files.empty()) {
         return -1;
     } else {
         if ((!report) && (outdir.empty())) {
             std::cerr << "output directory is required if not in report mode" << std::endl;
             return -1;
-        } else {
-            return options;
         }
     }
+    if ((!outdir.empty()) && (!fs::exists(outdir))) {
+        std::cerr << "ERROR: " << outdir << " does not exist" << std::endl;
+        return -1;
+    }
+    return options;
 }
 
 void
 generate_report()
 {
+    std::cout << std::endl;
     if (genre) {
         // Vector to hold sorted pairs
         std::vector<std::pair<std::string, int>> sortvec(genremap.begin(), genremap.end());
@@ -189,35 +226,41 @@ main(int argc, char *argv[])
     int options = 0;
     if ((options = parse_arguments(argc, argv)) < 0)
     {
-        std::cerr << "Usage: orgmusic [--genre] [--report] [--dry-run] <input paths> [output path]" << std::endl;
+        std::cerr << "Usage: orgmusic [--verbose|-v] [--genre|-g] [--report|-r] [--dry-run|-D] [--dump|-d] <input paths> [output path]" << std::endl;
+        std::cerr << "    --dump implies --report" << std::endl;
+        std::cerr << "    --report requires a report type (--genre)" << std::endl;
         exit(1);
     }
     assert( argc >= 3 );
-
-    // Test
-    //std::string insane = "Shitty Windows File&Name ∞ (too long)";
-    //std::cout << sane_elem(insane) << std::endl;
-    //exit(0);
+    mlog.setDefaults();
+    mlog.setLevel(MLoggerVerbosity::info);
+    if (verbose) {
+        mlog.setLevel(MLoggerVerbosity::debug);
+    }
+    // Logger now active.
 
     for (int i = options+1; i < argc; ++i)
     {
         fs::path path(argv[i]);
-        //std::cout << i << ": input path: " << path << std::endl;
         fs::file_status status = fs::status(path);
         if (fs::is_directory(status)) {
-            //std::cout << path << " is a directory" << std::endl;
             for (const auto& entry : fs::recursive_directory_iterator(path)) {
-                //std::cout << "found file " << entry.path() << std::endl;
                 fs::file_status substatus = fs::status(entry.path());
                 if (fs::is_regular_file(substatus)) {
-                    process_file(entry.path());
+                    if (process_file(entry.path()) < 0) {
+                        mlog.error() << "failed to process file: " << entry.path() << std::endl;
+                        exit(2);
+                    }
                 }
             }
         } else if (fs::is_regular_file(status)) {
-            //std::cout << path << " is a regular file" << std::endl;
-            process_file(path);
+            mlog.debug() << path << " is a regular file" << std::endl;
+            if (process_file(path) < 0) {
+                mlog.error() << "failed to process file: " << path << std::endl;
+                exit(2);
+            }
         } else {
-            std::cerr << path << " is an unsupported file type" << std::endl;
+            mlog.error() << path << " is an unsupported file type" << std::endl;
         }
     }
     if (report) {
