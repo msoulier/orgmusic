@@ -20,15 +20,18 @@
 
 namespace fs = std::filesystem;
 
-static std::string version_major = "ORGMUSIC_VERSION_MAJOR";
-static std::string version_minor = "ORGMUSIC_VERSION_MINOR";
-static std::string version_patch = "ORGMUSIC_VERSION_PATCH";
+static uint32_t version_major = ORGMUSIC_VERSION_MAJOR;
+static uint32_t version_minor = ORGMUSIC_VERSION_MINOR;
+static uint32_t version_patch = ORGMUSIC_VERSION_PATCH;
 static bool genre = false;
 static bool report = false;
 static bool dryrun = false;
 static bool dump = false;
 static bool verbose = false;
 static bool help = false;
+static bool version = false;
+static bool ignore = false;
+// FIXME: skip duplicates
 static std::vector<std::string> input_files;
 static fs::path outdir;
 static std::map<std::string, int> genremap;
@@ -69,7 +72,6 @@ process_file(fs::path path)
         return 0;
     }
     std::string spath = path.string();
-    int rv = 0;
     // MediaInfo expects unicode wchar_t*
     std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
     std::wstring myinput = converter.from_bytes(spath);
@@ -112,7 +114,7 @@ process_file(fs::path path)
         std::string title_str = wtitle.empty() ? "unknown" : converter.to_bytes(wtitle);
         mlog.debug() << "Title: " << sane_elem(title_str) << std::endl;
 
-        std::wstring wtrackno = info.Get(MediaInfoLib::Stream_General, 0, L"Track name/Position");
+        std::wstring wtrackno = info.Get(MediaInfoLib::Stream_General, 0, L"Track/Position");
         std::string trackno = wtrackno.empty() ? "unknown" : converter.to_bytes(wtrackno);
         mlog.debug() << "Track number: " << trackno << std::endl;
 
@@ -121,6 +123,7 @@ process_file(fs::path path)
             mlog.debug() << "Output file: " << output_file << std::endl;
             if (dryrun) {
                 mlog.info() << "dry-run: mkdir " << output_file.parent_path() << std::endl;
+                mlog.info() << "dry-run: copy " << path << " to " << output_file << std::endl;
             } else {
                 fs::path parent_path = output_file.parent_path();
                 try {
@@ -131,22 +134,54 @@ process_file(fs::path path)
                     mlog.error() << "failed to create directory: " << parent_path << " " << err.what() << std::endl;
                     return -1;
                 }
+                // Copy the file.
+                mlog.info() << "copying " << path << " to " << output_file << std::endl;
+                try {
+                    fs::copy_file(path, output_file);
+                } catch (fs::filesystem_error& err) {
+                    mlog.error() << "copy failed: " << err.what() << std::endl;
+                    return -1;
+                }
             }
         }
-
         mlog.debug() << "" << std::endl;
-
-        // Don't need to call this on a stack object.
-        //info.Close();
-        rv = 1;
     }
-    return rv;
+    return 1;
 }
 
 void
 print_help()
 {
-    std::cerr << "Usage: orgmusic [--verbose|-v] [--genre|-g] [--report|-r] [--dry-run|-D] [--dump|-d] <input paths> [output path]" << std::endl;
+    std::cerr << "Usage: orgmusic [--ignore-errors|-i] [--version|-v] [--verbose|-V] [--genre|-g] [--report|-r] [--dry-run|-D] [--dump|-d] <input paths> [output path]" << std::endl;
+}
+
+void
+print_version()
+{
+    printf("orgmusic version %d.%d.%d\n",
+        version_major, version_minor, version_patch);
+}
+
+void
+generate_report()
+{
+    std::cout << std::endl;
+    if (genre) {
+        // Vector to hold sorted pairs
+        std::vector<std::pair<std::string, int>> sortvec(genremap.begin(), genremap.end());
+
+        // Sort by values.
+        std::sort(sortvec.begin(), sortvec.end(), 
+            [](const auto& a, const auto& b) {
+                // return a.second < b.second;  // ascending
+                return a.second > b.second;  // for descending
+            });
+
+        std::cout << "Genre report:" << std::endl;
+        for (const auto& [key, value] : sortvec) {
+            printf("%20s    %5d\n", key.c_str(), value);
+        }
+    }
 }
 
 int
@@ -162,12 +197,14 @@ parse_arguments(int argc, char *argv[])
             { "report",  no_argument, 0, 0 },
             { "verbose", no_argument, 0, 0 },
             { "help",    no_argument, 0, 0 },
+            { "version", no_argument, 0, 0 },
+            { "ignore-errors", no_argument, 0, 0 },
             { 0,         0,           0, 0 }
         };
         int this_option_optind = optind ? optind : 1;
         int option_index = 0;
         
-        c = getopt_long(argc, argv, "Dgrvh", long_options, &option_index);
+        c = getopt_long(argc, argv, "iDgrvhV", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -198,10 +235,20 @@ parse_arguments(int argc, char *argv[])
             else if (long_option == "verbose") {
                 verbose = true;
             }
+            else if (long_option == "version") {
+                version = true;
+            }
+            else if (long_option == "ignore-errors") {
+                ignore = true;
+            }
             else {
                 std::cerr << "Unknown option: " << long_option << std::endl;
                 exit(1);
             }
+            break;
+
+        case 'i':
+            ignore = true;
             break;
 
         case 'D':
@@ -216,7 +263,7 @@ parse_arguments(int argc, char *argv[])
             report = true;
             break;
 
-        case 'v':
+        case 'V':
             verbose = true;
             break;
 
@@ -226,6 +273,10 @@ parse_arguments(int argc, char *argv[])
 
         case 'd':
             dump = true;
+            break;
+
+        case 'v':
+            version = true;
             break;
 
         default:
@@ -240,31 +291,13 @@ parse_arguments(int argc, char *argv[])
     }
     if (help) {
         print_help();
-        exit(1);
+        exit(0);
+    }
+    if (version) {
+        print_version();
+        exit(0);
     }
     return optind;
-}
-
-void
-generate_report()
-{
-    std::cout << std::endl;
-    if (genre) {
-        // Vector to hold sorted pairs
-        std::vector<std::pair<std::string, int>> sortvec(genremap.begin(), genremap.end());
-
-        // Sort by values.
-        std::sort(sortvec.begin(), sortvec.end(), 
-            [](const auto& a, const auto& b) {
-                // return a.second < b.second;  // ascending
-                return a.second > b.second;  // for descending
-            });
-
-        std::cout << "Genre report:" << std::endl;
-        for (const auto& [key, value] : sortvec) {
-            printf("%20s    %5d\n", key.c_str(), value);
-        }
-    }
 }
 
 int
@@ -324,7 +357,9 @@ main(int argc, char *argv[])
                 if (fs::is_regular_file(substatus)) {
                     if (process_file(entry.path()) < 0) {
                         mlog.error() << "failed to process file: " << entry.path() << std::endl;
-                        exit(2);
+                        if (!ignore) {
+                            exit(2);
+                        }
                     }
                 }
             }
@@ -332,7 +367,9 @@ main(int argc, char *argv[])
             mlog.debug() << path << " is a regular file" << std::endl;
             if (process_file(path) < 0) {
                 mlog.error() << "failed to process file: " << path << std::endl;
-                exit(2);
+                if (!ignore) {
+                    exit(2);
+                }
             }
         } else {
             mlog.error() << path << " is an unsupported file type" << std::endl;
