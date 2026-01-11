@@ -1,5 +1,5 @@
 #!/bin/sh
 
-export LD_LIBRARY_PATH=$HOME/lib
+export LD_LIBRARY_PATH=$HOME/mediainfo/lib
 
 ./build/orgmusic "$@"

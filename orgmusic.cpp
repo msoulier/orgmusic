@@ -9,6 +9,8 @@
 #include <cassert>
 #include <algorithm>
 #include <cctype>
+#include <unistd.h>
+#include <getopt.h>
 
 #include <MediaInfo/MediaInfo.h>
 
@@ -26,6 +28,7 @@ static bool report = false;
 static bool dryrun = false;
 static bool dump = false;
 static bool verbose = false;
+static bool help = false;
 static std::vector<std::string> input_files;
 static fs::path outdir;
 static std::map<std::string, int> genremap;
@@ -80,7 +83,7 @@ process_file(fs::path path)
         if (dump) {
             MediaInfoLib::String wdetails = info.Inform();
             std::string details = converter.to_bytes(wdetails);
-            std::cout << details << std::endl;
+            mlog.info() << details << std::endl;
         }
         std::wstring wgenre = info.Get(MediaInfoLib::Stream_General, 0, L"Genre");
         // convert back
@@ -98,31 +101,27 @@ process_file(fs::path path)
         }
         // Album, Album/Artist, Title
         std::wstring walbum = info.Get(MediaInfoLib::Stream_General, 0, L"Album");
-        std::string album_str = converter.to_bytes(walbum);
-        album_str = album_str.empty() ? "Unknown" : album_str;
+        std::string album_str = walbum.empty() ? "unknown" : converter.to_bytes(walbum);
         mlog.debug() << "Album: " << sane_elem(album_str) << std::endl;
 
         std::wstring wartist = info.Get(MediaInfoLib::Stream_General, 0, L"Performer");
-        std::string artist_str = converter.to_bytes(wartist);
-        artist_str = artist_str.empty() ? "Unknown" : artist_str;
+        std::string artist_str = wartist.empty() ? "unknown" : converter.to_bytes(wartist);
         mlog.debug() << "Artist: " << sane_elem(artist_str) << std::endl;
 
         std::wstring wtitle = info.Get(MediaInfoLib::Stream_General, 0, L"Title");
-        std::string title_str = converter.to_bytes(wtitle);
-        title_str = title_str.empty() ? "Unknown" : title_str;
+        std::string title_str = wtitle.empty() ? "unknown" : converter.to_bytes(wtitle);
         mlog.debug() << "Title: " << sane_elem(title_str) << std::endl;
 
         std::wstring wtrackno = info.Get(MediaInfoLib::Stream_General, 0, L"Track name/Position");
-        std::string trackno = converter.to_bytes(wtrackno);
-        trackno = trackno.empty() ? "" : trackno;
+        std::string trackno = wtrackno.empty() ? "unknown" : converter.to_bytes(wtrackno);
         mlog.debug() << "Track number: " << trackno << std::endl;
 
         if (!outdir.empty()) {
             fs::path output_file = outpath(outdir, genre_str, artist_str, album_str, title_str, trackno, path);
             mlog.debug() << "Output file: " << output_file << std::endl;
-            if (!dryrun) {
-                std::cout << "Here I would mkdir: " << output_file << std::endl;
-                std::cout << "parent_path: " << output_file.parent_path() << std::endl;
+            if (dryrun) {
+                mlog.info() << "dry-run: mkdir " << output_file.parent_path() << std::endl;
+            } else {
                 fs::path parent_path = output_file.parent_path();
                 try {
                     if (!fs::exists(parent_path)) {
@@ -137,65 +136,113 @@ process_file(fs::path path)
 
         mlog.debug() << "" << std::endl;
 
-        info.Close();
+        // Don't need to call this on a stack object.
+        //info.Close();
         rv = 1;
     }
     return rv;
 }
 
+void
+print_help()
+{
+    std::cerr << "Usage: orgmusic [--verbose|-v] [--genre|-g] [--report|-r] [--dry-run|-D] [--dump|-d] <input paths> [output path]" << std::endl;
+}
+
 int
 parse_arguments(int argc, char *argv[])
 {
-    // FIXME: use a real options parser
-    int options = 0;
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string arg(argv[i]);
-        if ((arg == "--genre") || (arg == "-r")) {
-            genre = true;
-            options++;
-        } else if ((arg == "--report") || (arg == "-R")) {
-            report = true;
-            options++;
-        } else if ((arg == "--dry-run") || (arg == "-D")) {
-            dryrun = true;
-            options++;
-        } else if ((arg == "--dump") || (arg == "-d")) {
-            dump = true;
-            options++;
-        } else if ((arg == "--verbose") || (arg == "-v")) {
-            verbose = true;
-            options++;
-        } else {
-            if (i == argc-1) {
-                // last argument, if no input files then it's input
-                if (input_files.empty()) {
-                    input_files.push_back(arg);
-                } else {
-                    outdir = arg;
-                }
-            } else {
-                input_files.push_back(arg);
+    int c;
+    int option_index;
+
+    while (1) {
+        static struct option long_options[] = {
+            { "dry-run", no_argument, 0, 0 },
+            { "genre",   no_argument, 0, 0 },
+            { "report",  no_argument, 0, 0 },
+            { "verbose", no_argument, 0, 0 },
+            { "help",    no_argument, 0, 0 },
+            { 0,         0,           0, 0 }
+        };
+        int this_option_optind = optind ? optind : 1;
+        int option_index = 0;
+        
+        c = getopt_long(argc, argv, "Dgrvh", long_options, &option_index);
+
+        if (c == -1)
+            break;
+
+        std::string long_option;
+        switch (c) {
+        case 0:
+            long_option = long_options[option_index].name;
+            //printf("option %s\n", long_options[option_index].name);
+            //if (optarg)
+            //    printf(" with arg %s", optarg);
+            //printf("\n");
+            if (long_option == "help") {
+                help = true;
             }
+            else if (long_option == "genre") {
+                genre = true;
+            }
+            else if (long_option == "report") {
+                report = true;
+            }
+            else if (long_option == "dump") {
+                dump = true;
+            }
+            else if (long_option == "dry-run") {
+                dryrun = true;
+            }
+            else if (long_option == "verbose") {
+                verbose = true;
+            }
+            else {
+                std::cerr << "Unknown option: " << long_option << std::endl;
+                exit(1);
+            }
+            break;
+
+        case 'D':
+            dryrun = true;
+            break;
+
+        case 'g':
+            genre = true;
+            break;
+
+        case 'r':
+            report = true;
+            break;
+
+        case 'v':
+            verbose = true;
+            break;
+
+        case 'h':
+            help = true;
+            break;
+
+        case 'd':
+            dump = true;
+            break;
+
+        default:
+            help = true;
+            break;
         }
     }
-    if ((report) && (!genre)) {
+
+    if (report && !genre) {
         std::cerr << "--report requires a report type: --genre currently" << std::endl;
         return -1;
     }
-    if (input_files.empty()) {
-        return -1;
-    } else {
-        if ((!report) && (outdir.empty())) {
-            std::cerr << "output directory is required if not in report mode" << std::endl;
-            return -1;
-        }
+    if (help) {
+        print_help();
+        exit(1);
     }
-    if ((!outdir.empty()) && (!fs::exists(outdir))) {
-        std::cerr << "ERROR: " << outdir << " does not exist" << std::endl;
-        return -1;
-    }
-    return options;
+    return optind;
 }
 
 void
@@ -223,25 +270,53 @@ generate_report()
 int
 main(int argc, char *argv[])
 {
-    int options = 0;
-    if ((options = parse_arguments(argc, argv)) < 0)
-    {
-        std::cerr << "Usage: orgmusic [--verbose|-v] [--genre|-g] [--report|-r] [--dry-run|-D] [--dump|-d] <input paths> [output path]" << std::endl;
-        std::cerr << "    --dump implies --report" << std::endl;
-        std::cerr << "    --report requires a report type (--genre)" << std::endl;
-        exit(1);
-    }
-    assert( argc >= 3 );
+    int option_index = parse_arguments(argc, argv);
     mlog.setDefaults();
     mlog.setLevel(MLoggerVerbosity::info);
     if (verbose) {
         mlog.setLevel(MLoggerVerbosity::debug);
     }
-    // Logger now active.
 
-    for (int i = options+1; i < argc; ++i)
+    if (option_index < 0) {
+        mlog.debug() << "option_index < 0" << std::endl;
+        print_help();
+        exit(1);
+    } else if (option_index >= argc) {
+        mlog.debug() << "option_index >= argc" << std::endl;
+        mlog.debug("%d %d", option_index, argc);
+        print_help();
+        exit(1);
+    } else if (option_index < argc) {
+        mlog.debug() << "non-option ARGV-elements" << std::endl;
+        while (option_index < argc) {
+            std::string filearg = argv[option_index++];
+            mlog.debug() << filearg << std::endl;
+            if (option_index == argc) {
+                mlog.debug("last argument");
+                // If there are no input files, then this is an input file.
+                if (input_files.empty()) {
+                    input_files.push_back(filearg);
+                } else {
+                    outdir = filearg;
+                }
+            } else {
+                input_files.push_back(filearg);
+            }
+        }
+    }
+    mlog.debug("number of input files: %d", input_files.size());
+    for (auto path : input_files) {
+        mlog.debug() << "   ===> " << path << std::endl;
+    }
+    if (outdir.empty()) {
+        mlog.debug("outdir is empty");
+    } else {
+        mlog.debug() << "output dir: " << outdir << std::endl;
+    }
+
+    for (auto ifile : input_files)
     {
-        fs::path path(argv[i]);
+        fs::path path(ifile);
         fs::file_status status = fs::status(path);
         if (fs::is_directory(status)) {
             for (const auto& entry : fs::recursive_directory_iterator(path)) {

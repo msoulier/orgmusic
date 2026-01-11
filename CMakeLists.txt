@@ -15,8 +15,8 @@ add_executable(orgmusic
     orgmusic.cpp)
 target_link_libraries(orgmusic PUBLIC mediainfo)
 target_link_libraries(orgmusic PUBLIC mikecpp)
-target_include_directories(orgmusic PUBLIC $HOME/include)
+target_include_directories(orgmusic PUBLIC $HOME/mediainfo/include)
 target_include_directories(orgmusic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/mikelibcpp)
-target_link_directories(orgmusic PUBLIC $HOME/lib)
+target_link_directories(orgmusic PUBLIC $HOME/mediainfo/lib)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mikelibcpp)

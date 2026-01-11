@@ -4,3 +4,6 @@
 [submodule "mikelibcpp"]
 	path = mikelibcpp
 	url = git@github.com:msoulier/mikelibcpp.git
+[submodule "MediaInfoLib"]
+	path = MediaInfoLib
+	url = https://github.com/MediaArea/MediaInfoLib.git
